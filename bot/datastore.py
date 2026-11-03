@@ -30,57 +30,90 @@ def _data_repo_dir() -> str:
     return config.DATA_DIR
 
 def pull_data() -> str:
-    """دیتای قبلی را از ریپوی خصوصی می‌کشد (clone نازک)."""
+    """دیتای قبلی را از ریپوی خصوصی می‌کشد (clone نازک) — فایل‌های زنده حفظ می‌شوند."""
     d = _data_repo_dir()
     os.makedirs(d, exist_ok=True)
     if not os.path.isdir(os.path.join(d, ".git")):
-        # clone نازک: فقط فایل‌های دیتا
+        # دایرکتوری باید خالی باشد؛ محتوای غیر-git موجود را موقتاً کنار می‌گذاریم
+        tmp_parent = os.path.dirname(d) or "."
+        staging = os.path.join(tmp_parent, f"_data_stage_{os.getpid()}")
+        os.makedirs(staging, exist_ok=True)
         r, out = _run(["git", "clone", "--depth", "1", "--filter=blob:none",
-                       _token_url(config.DATA_REPO), d], timeout=180)
+                       _token_url(config.DATA_REPO), staging], timeout=180)
         if r != 0:
             print(f"[datastore] clone failed: {out[:300]}", flush=True)
             return "clone-failed"
-        # فایل‌های کاری داخل ریپو نمی‌مانند
-        for junk in ("README.md", ".gitignore", "LICENSE"):
+        # فایل‌های دیتا را به دایرکتوری کاری منتقل کن (فایل‌های موجود اهمیت دارند: زنده)
+        for name in os.listdir(staging):
+            if name == ".git":
+                continue
+            dst = os.path.join(d, name)
+            src = os.path.join(staging, name)
+            try:
+                if os.path.exists(dst):
+                    continue  # فایل زنده را بازنویسی نکن
+                os.replace(src, dst)
+            except OSError:
+                pass
+        # دایرکتوری git را هم منتقل کن تا pushهای بعدی incremental باشند
+        git_src = os.path.join(staging, ".git")
+        git_dst = os.path.join(d, ".git")
+        if not os.path.isdir(git_dst) and os.path.isdir(git_src):
+            try:
+                os.rename(git_src, git_dst)
+            except OSError:
+                _run(["git", "init", "-b", "main"], cwd=d)
+                _run(["git", "remote", "add", "origin", _token_url(config.DATA_REPO)], cwd=d)
+        try:
+            _run(["rm", "-rf", staging]) if os.name != "nt" else None
+        except Exception:
             pass
         return "cloned"
+    # fetch + ادغام بدون از دست دادن فایل‌های زنده: checkout فقط فایل‌های دیتا
     r, out = _run(["git", "fetch", "--depth", "1", "origin"], cwd=d)
     if r == 0:
-        _run(["git", "reset", "--hard", "origin/HEAD"], cwd=d)
-    # اگر remote به خاطر توکن جدید عوض شده، آپدیت کن
+        _run(["git", "checkout", "-f", "FETCH_HEAD", "--", "botdata.db"], cwd=d)
     _run(["git", "remote", "set-url", "origin", _token_url(config.DATA_REPO)], cwd=d)
     return "pulled"
 
 def push_data() -> str:
     """اسنپ‌شات دیتابیس را commit و push می‌کند (با retry برای تداخل)."""
+    import db
     d = _data_repo_dir()
     if not os.path.isdir(os.path.join(d, ".git")):
-        # ریپو خالی است: init کن
         _run(["git", "init", "-b", "main"], cwd=d)
         _run(["git", "remote", "add", "origin", _token_url(config.DATA_REPO)], cwd=d)
-        _run(["git", "config", "user.email", "bot@users.noreply.github.com"], cwd=d)
-        _run(["git", "config", "user.name", "data-bot"], cwd=d)
     _run(["git", "config", "user.email", "bot@users.noreply.github.com"], cwd=d)
     _run(["git", "config", "user.name", "data-bot"], cwd=d)
     _run(["git", "remote", "set-url", "origin", _token_url(config.DATA_REPO)], cwd=d)
-    # فایل‌های موقت نباید پوش شوند
+    # فایل‌های زنده هرگز پوش نمی‌شوند؛ فقط اسنپ‌شات سازگار
     with open(os.path.join(d, ".gitignore"), "w") as f:
-        f.write("live.db\nlive.db-wal\nlive.db-shm\ntmp_dl/\ncookies.txt\n*.tmp\n")
+        f.write("live.db\nlive.db-wal\nlive.db-shm\ntmp_dl/\nadminweb/\ncookies.txt\n*.tmp\nbotdata.db.tmp\n")
+    # اسنپ‌شات تازه بساز (اگر دیتابیس باز است)
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            pass  # در حالت async، snapshot قبلاً در periodic_sync ساخته شده
+        else:
+            asyncio.run(db.backup_snapshot())
+    except RuntimeError:
+        pass  # event loop بسته/در حال اجرا
+    except Exception as e:
+        print(f"[datastore] snapshot failed: {e}", flush=True)
     for attempt in range(3):
         _run(["git", "add", "-A"], cwd=d)
         msg = f"data sync {dt.datetime.now(dt.timezone.utc).isoformat(timespec='seconds')}"
         rc, out = _run(["git", "commit", "-m", msg], cwd=d)
         if rc != 0 and "nothing to commit" not in out:
-            # احتمالاً merge conflict
             _run(["git", "fetch", "origin"], cwd=d)
-            _run(["git", "reset", "--hard", "origin/HEAD"], cwd=d)
+            _run(["git", "checkout", "-f", "FETCH_HEAD", "--", "botdata.db"], cwd=d)
             continue
         rc, out = _run(["git", "push", "-u", "origin", "main"], cwd=d, timeout=180)
         if rc == 0:
             return "pushed"
         if "fetch first" in out.lower() or "rejected" in out.lower() or "non-fast-forward" in out.lower():
             _run(["git", "fetch", "origin"], cwd=d)
-            _run(["git", "reset", "--hard", "origin/HEAD"], cwd=d)
+            _run(["git", "checkout", "-f", "FETCH_HEAD", "--", "botdata.db"], cwd=d)
             continue
         print(f"[datastore] push error: {out[:300]}", flush=True)
     return "push-failed"
