@@ -1,0 +1,77 @@
+name: bot-24-7
+
+# چرخه‌ی ۲۴/۷:
+# 1) cron هر ۲۰ دقیقه یک run «آماده» در صف می‌گذارد (watchdog) تا اگر run فعال مرد، بلافاصله بعدی بالا بیاید.
+# 2) خودِ بات بعد از ~۵ ساعت خروج نرم می‌کند و در پایان job هم run بعدی تریگر می‌شود.
+# 3) concurrency: همیشه فقط یک بات فعال + یک pending. هیچ‌وقت دو نسخه همزمان دانلود نمی‌کند.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/20 * * * *'
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: bot-run
+  cancel-in-progress: false
+
+jobs:
+  run-bots:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install deps
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          python -m playwright install chromium --with-deps
+
+      - name: Pull persisted data (private repo)
+        working-directory: bot
+        run: python -m datastore pull
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+          DATA_REPO: ${{ secrets.DATA_REPO }}
+
+      - name: Run bots (main + backup + admin)
+        timeout-minutes: 330
+        working-directory: bot
+        run: |
+          python -m main
+        env:
+          BOT_MAIN_TOKEN: ${{ secrets.BOT_MAIN_TOKEN }}
+          BOT_BACKUP_TOKEN: ${{ secrets.BOT_BACKUP_TOKEN }}
+          BOT_ADMIN_TOKEN: ${{ secrets.BOT_ADMIN_TOKEN }}
+          ADMIN_ID: ${{ secrets.ADMIN_ID }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+          ADMIN_WEB_KEY: ${{ secrets.ADMIN_WEB_KEY }}
+          GH_OWNER: ${{ secrets.GH_OWNER }}
+          DATA_REPO: ${{ secrets.DATA_REPO }}
+          ADMIN_WEB_URL: ${{ secrets.ADMIN_WEB_URL }}
+          SHUTDOWN_MINUTES: '290'
+          SYNC_INTERVAL: '600'
+          YTDLP_COOKIES: ${{ secrets.YTDLP_COOKIES }}
+
+      - name: Finalize — push data + chain next run
+        if: always()
+        working-directory: bot
+        run: |
+          python -m datastore push || true
+          git config user.email "bot@users.noreply.github.com"
+          git config user.name "multibot"
+          git commit --allow-empty -qm "heartbeat $(date -u '+%Y-%m-%d %H:%M:%S')Z"
+          git push -q || true
+          gh workflow run bot-24-7.yml --ref main || true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+          DATA_REPO: ${{ secrets.DATA_REPO }}

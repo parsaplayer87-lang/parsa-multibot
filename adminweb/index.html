@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>پنل ادمین — parsa multibot</title>
+<script src="https://tapi.bale.ai/miniapp.js?3"></script>
+<style>
+  :root{
+    --bg:#0f1420; --card:#1a2130; --card2:#212a3d; --text:#e8edf7; --muted:#8b97ad;
+    --accent:#4f8cff; --ok:#2ecc71; --bad:#ff5d5d; --warn:#ffb020;
+  }
+  *{box-sizing:border-box; margin:0; padding:0; font-family:Vazirmatn,system-ui,-apple-system,"Segoe UI",sans-serif;}
+  body{background:var(--bg); color:var(--text); min-height:100vh;}
+  .wrap{max-width:860px; margin:0 auto; padding:16px 14px 80px;}
+  h1{font-size:1.15rem; margin:14px 0 4px;}
+  .sub{color:var(--muted); font-size:.8rem; margin-bottom:16px;}
+  .cards{display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px;}
+  .card{background:var(--card); border-radius:14px; padding:14px;}
+  .card .v{font-size:1.5rem; font-weight:800;}
+  .card .l{color:var(--muted); font-size:.75rem; margin-top:4px;}
+  section{background:var(--card); border-radius:16px; padding:14px; margin-top:14px;}
+  section h2{font-size:.95rem; margin-bottom:10px; color:var(--accent);}
+  table{width:100%; border-collapse:collapse; font-size:.8rem;}
+  th,td{padding:7px 6px; text-align:right; border-bottom:1px solid #2a3450;}
+  th{color:var(--muted); font-weight:600;}
+  tr:hover td{background:var(--card2);}
+  .pill{display:inline-block; padding:2px 8px; border-radius:99px; font-size:.7rem;}
+  .pill.ok{background:#123b26; color:var(--ok);}
+  .pill.bad{background:#3b1216; color:var(--bad);}
+  .row-actions{display:flex; gap:6px; flex-wrap:wrap; margin-top:10px;}
+  button{background:var(--accent); color:#fff; border:0; border-radius:10px; padding:9px 14px; font-size:.85rem; cursor:pointer; font-family:inherit;}
+  button.ghost{background:var(--card2); color:var(--text);}
+  input,select{background:var(--card2); border:1px solid #2a3450; color:var(--text); border-radius:10px; padding:10px 12px; font-size:.85rem; font-family:inherit; width:100%;}
+  .msg{margin-top:10px; padding:10px 12px; border-radius:10px; background:var(--card2); font-size:.8rem; display:none;}
+  .search{margin:10px 0;}
+  #loader{position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:var(--bg); z-index:9; flex-direction:column; gap:12px;}
+  .spin{width:34px; height:34px; border:3px solid #2a3450; border-top-color:var(--accent); border-radius:50%; animation:s .8s linear infinite;}
+  @keyframes s{to{transform:rotate(360deg)}}
+  .muted{color:var(--muted); font-size:.75rem;}
+  .msgrow{padding:8px 0; border-bottom:1px dashed #2a3450; font-size:.78rem;}
+  .msgrow .who{color:var(--accent);}
+  .msgrow .when{color:var(--muted); font-size:.68rem;}
+</style>
+</head>
+<body>
+<div id="loader"><div class="spin"></div><div class="muted">در حال بازگشایی داده‌های رمزنگاری‌شده...</div></div>
+<div class="wrap">
+  <h1>🛡 پنل ادمین</h1>
+  <div class="sub" id="genAt">—</div>
+
+  <div class="cards" id="cards"></div>
+
+  <section>
+    <h2>🔌 قابلیت‌ها (وضعیت هر بات)</h2>
+    <div id="features" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
+    <div class="row-actions">
+      <button id="cmdStats">📊 آمار در چت</button>
+      <button id="cmdUsers" class="ghost">👥 کاربران در چت</button>
+    </div>
+    <div class="muted" style="margin-top:6px">دکمه‌ها با <b>sendData</b> به بات فرستاده می‌شوند و پاسخ در چت ادمین می‌آید. اگر مینی‌اپ از طریق لینک مستقیم (بیرون از بله) باز شده باشد، این دکمه‌ها کار نمی‌کنند — پنل پیامی بات جایگزین کامل است.</div>
+  </section>
+
+  <section>
+    <h2>👥 کاربران</h2>
+    <div class="search"><input id="q" placeholder="جستجو بر اساس نام، یوزرنیم یا آیدی..."></div>
+    <div style="overflow-x:auto">
+      <table>
+        <thead><tr><th>#</th><th>نام</th><th>یوزرنیم</th><th>آیدی</th><th>پیام</th><th>اولین</th><th>آخرین</th><th>وضعیت</th></tr></thead>
+        <tbody id="users"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>📜 آخرین پیام‌های کاربران (۳۰۰ پیام اخیر)</h2>
+    <div class="search"><input id="q2" placeholder="جستجو در متن پیام‌ها..."></div>
+    <div id="msgs"></div>
+  </section>
+
+  <section>
+    <h2>📥 آخرین دانلودها (۱۰۰ اخیر)</h2>
+    <div style="overflow-x:auto">
+      <table>
+        <thead><tr><th>کاربر</th><th>عنوان/لینک</th><th>نوع</th><th>کیفیت</th><th>وضعیت</th><th>زمان</th></tr></thead>
+        <tbody id="dls"></tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const enc = b64 => Uint8Array.from(atob(b64.replace(/-/g,'+').replace(/_/g,'/')), c=>c.charCodeAt(0));
+
+async function decryptSnap(){
+  // کلید از hash (#k=...) — به سرور ارسال نمی‌شود
+  const m = location.hash.match(/k=([A-Za-z0-9_\-=]+)/);
+  if(!m) throw new Error("کلید در لینک نیست");
+  const key = enc(m[1]);
+  const r = await fetch("snapshot.enc?t="+Date.now());
+  if(!r.ok) throw new Error("snapshot.enc پیدا نشد (بات هنوز اولین sync را نزده)");
+  const buf = new Uint8Array(await r.arrayBuffer());
+  const nonce = buf.slice(0,12), ct = buf.slice(12);
+  const k = await crypto.subtle.importKey("raw", key, "AES-GCM", false, ["decrypt"]);
+  const pt = await crypto.subtle.decrypt({name:"AES-GCM", iv:nonce}, k, ct);
+  return JSON.parse(new TextDecoder().decode(pt));
+}
+
+function esc(s){const d=document.createElement('div');d.textContent=(s==null?'':String(s));return d.innerHTML;}
+
+function render(D){
+  $("#genAt").textContent = "آخرین بروزرسانی: " + (D.generated_at||"—") + " (UTC) — داده‌ها رمزنگاری‌شده و فقط روی دستگاه شما باز شدند";
+  const st = D.stats||{};
+  $("#cards").innerHTML = [
+    [st.users, "کاربران"], [st.active_today, "فعال امروز"], [st.msgs_today, "پیام امروز"],
+    [st.msgs_total, "کل پیام‌ها"], [st.downloads, "دانلودها"], [st.searches, "جستجوها"]
+  ].map(([v,l])=>`<div class="card"><div class="v">${esc(v??"—")}</div><div class="l">${l}</div></div>`).join("");
+
+  const FN = {"downloader":"دانلودر","websearch":"سرچ وب","yt":"یوتیوب","gh":"گیت‌هاب","tools":"ابزارها"};
+  const BN = {"main":"اصلی","backup":"پشتیبان","admin":"ادمین"};
+  $("#features").innerHTML = Object.entries(D.features||{}).map(([k,v])=>{
+    const [b,f]=k.split(":");
+    return `<span class="pill ${v?'ok':'bad'}">${BN[b]||b} / ${FN[f]||f}: ${v?'روشن':'خاموش'}</span>`;
+  }).join("");
+
+  const q = $("#q").value.trim().toLowerCase();
+  $("#users").innerHTML = (D.users||[]).filter(u=>{
+    if(!q) return true;
+    return [u.first_name,u.username,String(u.user_id)].some(x=>(x||"").toLowerCase().includes(q));
+  }).map((u,i)=>`<tr>
+    <td>${i+1}</td><td>${esc(u.first_name||"—")}</td><td>${esc(u.username?"@"+u.username:"—")}</td>
+    <td>${esc(u.user_id)}</td><td>${esc(u.msg_count)}</td>
+    <td class="muted">${esc((u.first_seen||"").slice(0,16).replace("T"," "))}</td>
+    <td class="muted">${esc((u.last_seen||"").slice(0,16).replace("T"," "))}</td>
+    <td><span class="pill ${u.banned?'bad':'ok'}">${u.banned?'بن':'عادی'}</span></td>
+  </tr>`).join("") || `<tr><td colspan="8" class="muted">کاربری نیست</td></tr>`;
+
+  const q2 = $("#q2").value.trim().toLowerCase();
+  $("#msgs").innerHTML = (D.messages||[]).filter(m=>!q2 || (m.text||"").toLowerCase().includes(q2))
+    .map(m=>{
+      const u=(D.users||[]).find(x=>x.user_id===m.user_id);
+      const name=u?(u.first_name||u.username||u.user_id):m.user_id;
+      return `<div class="msgrow"><span class="who">${esc(name)}</span>
+        <span class="muted"> [${esc(m.bot)}] ${esc(m.kind)} · ${esc((m.ts||"").slice(0,16).replace("T"," "))}</span><br>
+        ${esc((m.text||"").slice(0,200))}</div>`;
+    }).join("") || `<div class="muted">پیامی نیست</div>`;
+
+  $("#dls").innerHTML = (D.downloads||[]).map(d=>{
+    const u=(D.users||[]).find(x=>x.user_id===d.user_id);
+    const name=u?(u.first_name||u.user_id):d.user_id;
+    return `<tr><td>${esc(name)}</td><td>${esc((d.title||d.url||"").slice(0,40))}</td>
+      <td>${esc(d.kind)}</td><td>${esc(d.quality)}</td>
+      <td><span class="pill ${d.status==='done'?'ok':(d.status==='failed'?'bad':'')}">${esc(d.status)}</span></td>
+      <td class="muted">${esc((d.ts_start||"").slice(0,16).replace("T"," "))}</td></tr>`;
+  }).join("") || `<tr><td colspan="6" class="muted">دانلودی نیست</td></tr>`;
+}
+
+function sendToBot(cmd){
+  try{
+    if(window.Bale && Bale.WebApp && Bale.WebApp.sendData){
+      Bale.WebApp.sendData("cmd:"+cmd);
+    }else{
+      alert("این دکمه فقط داخل بله کار می‌کند. از پنل پیامی داخل چت ادمین استفاده کنید.");
+    }
+  }catch(e){ alert("ارسال ممکن نشد: "+e); }
+}
+
+(async ()=>{
+  try{
+    if(window.Bale && Bale.WebApp){ try{Bale.WebApp.ready(); Bale.WebApp.expand();}catch(e){} }
+    const D = await decryptSnap();
+    window.__D = D;
+    render(D);
+    $("#q").addEventListener("input", ()=>render(window.__D));
+    $("#q2").addEventListener("input", ()=>render(window.__D));
+    $("#cmdStats").onclick = ()=>sendToBot("stats");
+    $("#cmdUsers").onclick = ()=>sendToBot("users");
+  }catch(e){
+    document.body.innerHTML = `<div style="max-width:520px;margin:80px auto;text-align:center;color:#e8edf7;font-family:Vazirmatn,sans-serif;padding:0 20px">
+      <h2>⛔ بازگشایی ممکن نشد</h2>
+      <p style="color:#8b97ad;line-height:2">${esc(e.message||e)}<br><br>
+      لینک کامل (همراه با کلید بعد از #) را از پنل پیامی بات دریافت کنید. داده‌ها رمزنگاری‌شده‌اند و بدون کلید قابل نمایش نیستند.</p></div>`;
+  }finally{
+    const L=$("#loader"); if(L) L.remove();
+  }
+})();
+</script>
+</body>
+</html>

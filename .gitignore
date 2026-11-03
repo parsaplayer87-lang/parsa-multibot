@@ -1,0 +1,21 @@
+# فایل‌های دیتا (نباید وارد ریپوی کد شوند)
+data/
+*.db
+*.db-wal
+*.db-shm
+*.mhtml
+
+# پایتون
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# محرمانه‌ها
+.env
+*.token
+cookies.txt
+
+# سیستم
+.DS_Store
+Thumbs.db
